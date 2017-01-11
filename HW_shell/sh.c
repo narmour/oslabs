@@ -61,29 +61,70 @@ runcmd(struct cmd *cmd)
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
       exit(0);
-    fprintf(stdout,"this is %s\n",ecmd->argv[0]);
-    
-    char p[] = "/bin/";
+    // concatenate /bin/ to the input, store in buffer b
+    char s[] = "/bin/";
     char b[100];
-
-    strcpy(b,p);
+    strcpy(b,s);
     strcat(b,ecmd->argv[0]);
-    fprintf(stdout,"my buffer: %s\n",b);
-    execv(b,ecmd->argv);
+
+    if(execv(b,ecmd->argv)!=0){
+        fprintf(stdout,"ERROR %s does not exist\n",b);
+        char x[] = "/usr/bin/";
+        strcpy(b,x);
+        strcat(b,ecmd->argv[0]);
+        fprintf(stdout,"try other: %s\n",b);
+        execv(b,ecmd->argv);
+    }
     break;
 
   case '>':
   case '<':
     rcmd = (struct redircmd*)cmd;
-    fprintf(stderr, "redir not implemented\n");
-    // Your code here ...
+    // need to change output of child process
+    if(rcmd->type == '>'){
+        close(1);
+        open(rcmd->file,rcmd->mode);
+    }
+    //else it must be < which means we need to change stdin
+    else{
+        close(0);
+        open(rcmd->file,rcmd->mode);
+    }
+
     runcmd(rcmd->cmd);
+    close(rcmd->fd);
     break;
 
   case '|':
     pcmd = (struct pipecmd*)cmd;
-    fprintf(stderr, "pipe not implemented\n");
-    // Your code here ...
+    //p will have pipe file descriptrs
+    int p[2];
+    //create pipe
+    pipe(p);
+
+    if(fork()==0){
+        //close child stdin
+        close(0);
+        // copy read end of pipe
+        dup(p[0]);
+        // close both ends of pipe
+        close(p[0]);
+        close(p[1]);
+        //exec child with read end of pipe as input
+        runcmd(pcmd->right);
+   }
+   //else run parent process to write to p[1]
+   else{
+       close(1);
+       dup(p[1]);
+       close(p[0]);
+       close(p[1]);
+       runcmd(pcmd->left);
+   }
+
+
+
+
     break;
   }    
   exit(0);
